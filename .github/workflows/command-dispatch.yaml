@@ -1,0 +1,255 @@
+---
+name: PR Command Dispatch
+# Fully dynamic reusable workflow for handling slash commands in PR comments
+# Supports any command: /command [key=value ...]
+# Looks for .github/workflows/{command}.yaml or .github/workflows/{command}.yml in your repository
+
+on:
+  workflow_call:
+    # No inputs needed - reads from github.event.comment
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write       # Trigger workflows on PR branch
+  id-token: write       # OIDC for Artifactory
+  actions: write        # Dispatch workflows
+  packages: write       # Docker operations
+  pull-requests: write  # Comment on PRs
+
+jobs:
+  # ============================================
+  # Parse Command and Extract Arguments
+  # ============================================
+  parse-command:
+    name: Parse Command
+    if: |
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/')
+    runs-on: ubuntu-latest
+    outputs:
+      command: ${{ steps.parse.outputs.command }}
+      kwargs-json: ${{ steps.parse.outputs.kwargs-json }}
+      pr-branch: ${{ steps.pr-info.outputs.branch }}
+      pr-number: ${{ steps.pr-info.outputs.number }}
+      has-permission: ${{ steps.check-permissions.outputs.has-permission }}
+      comment-id: ${{ github.event.comment.id }}
+    steps:
+      - name: Check user permissions
+        id: check-permissions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          PERM=$(gh api "repos/${REPO}/collaborators/${ACTOR}/permission" --jq '.permission')
+
+          if [[ "$PERM" =~ ^(write|maintain|admin)$ ]]; then
+            echo "has-permission=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-permission=false" >> "$GITHUB_OUTPUT"
+
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+              -f content=confused --silent
+
+            gh api "repos/${REPO}/issues/${ISSUE_NUMBER}/comments" \
+              -f body="❌ @${ACTOR} does not have permission to run commands. Required: write, maintain, or admin. Current: ${PERM}"
+          fi
+
+      - name: Get PR information
+        if: steps.check-permissions.outputs.has-permission == 'true'
+        id: pr-info
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          BRANCH=$(gh api "repos/${REPO}/pulls/${ISSUE_NUMBER}" --jq '.head.ref')
+
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "number=${ISSUE_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Parse command and keyword arguments
+        if: steps.check-permissions.outputs.has-permission == 'true'
+        id: parse
+        shell: bash
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          # Extract first line of comment (COMMENT_BODY is set via env)
+          FIRST_LINE=$(echo "$COMMENT_BODY" | head -n 1)
+
+          # Extract command (first word after /) and trim whitespace/newlines
+          COMMAND=$(echo "$FIRST_LINE" | awk '{print $1}' | sed 's/^\///' | tr -d '\n\r')
+
+          # Extract remaining arguments
+          ARGS=$(echo "$FIRST_LINE" | cut -d' ' -f2- 2>/dev/null || echo "")
+
+          echo "command=$COMMAND" >> $GITHUB_OUTPUT
+
+          # Parse keyword arguments only (key=value format)
+          declare -A KWARGS
+
+          if [ -n "$ARGS" ]; then
+            # Temporary file for parsing
+            echo "$ARGS" > /tmp/args.txt
+
+            # Read and parse keyword arguments
+            while IFS= read -r line; do
+              # Split by spaces (respecting quotes)
+              eval "arr=($line)"
+              for arg in "${arr[@]}"; do
+                if [[ "$arg" =~ ^([a-zA-Z0-9_-]+)=(.+)$ ]]; then
+                  # Keyword argument
+                  key="${BASH_REMATCH[1]}"
+                  value="${BASH_REMATCH[2]}"
+                  # Remove quotes if present
+                  value=$(echo "$value" | sed 's/^"\(.*\)"$/\1/' | sed "s/^'\(.*\)'$/\1/")
+                  KWARGS["$key"]="$value"
+                fi
+              done
+            done < /tmp/args.txt
+          fi
+
+          # Build JSON output for kwargs
+          JSON='{'
+          first=true
+          for key in "${!KWARGS[@]}"; do
+            if [ "$first" = true ]; then
+              first=false
+            else
+              JSON+=','
+            fi
+            # Escape double quotes in values
+            value="${KWARGS[$key]}"
+            value=$(echo "$value" | sed 's/"/\\"/g')
+            JSON+="\"$key\":\"$value\""
+          done
+          JSON+='}'
+
+          echo "kwargs-json=$JSON" >> $GITHUB_OUTPUT
+
+          # Debug output
+          echo "### Command Parsed" >> $GITHUB_STEP_SUMMARY
+          echo "- Command: \`$COMMAND\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Workflow: \`.github/workflows/$COMMAND.yaml\` or \`.github/workflows/$COMMAND.yml\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Keyword Arguments: \`$JSON\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: React to command (acknowledge)
+        if: steps.check-permissions.outputs.has-permission == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        shell: bash
+        run: |
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content=eyes --silent
+
+  # ============================================
+  # Dynamic Command Dispatch
+  # ============================================
+  dispatch:
+    name: Dispatch Command
+    needs: parse-command
+    if: needs.parse-command.outputs.has-permission == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger workflow
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMAND: ${{ needs.parse-command.outputs.command }}
+          KWARGS_JSON: ${{ needs.parse-command.outputs.kwargs-json }}
+          PR_NUMBER: ${{ needs.parse-command.outputs.pr-number }}
+          COMMENT_ID: ${{ needs.parse-command.outputs.comment-id }}
+          PR_BRANCH: ${{ needs.parse-command.outputs.pr-branch }}
+        shell: bash
+        run: |
+          # Build input sets to try (progressively strip optional inputs)
+          INPUTS_FULL=$(echo "$KWARGS_JSON" | jq -c \
+            --arg pr "$PR_NUMBER" --arg cid "$COMMENT_ID" \
+            '. + {"pr-number": $pr, "comment-id": $cid}')
+          INPUTS_PR=$(echo "$KWARGS_JSON" | jq -c \
+            --arg pr "$PR_NUMBER" \
+            '. + {"pr-number": $pr}')
+          INPUTS_KWARGS="$KWARGS_JSON"
+
+          INPUT_SETS=("$INPUTS_FULL" "$INPUTS_PR" "$INPUTS_KWARGS")
+          INPUT_LABELS=("with pr-number and comment-id" "with pr-number" "with kwargs only")
+          EXTENSIONS=("yaml" "yml")
+
+          SUCCESS=false
+          LAST_ERROR=""
+
+          for ext in "${EXTENSIONS[@]}"; do
+            WORKFLOW_ID="${COMMAND}.${ext}"
+
+            for i in "${!INPUT_SETS[@]}"; do
+              INPUTS="${INPUT_SETS[$i]}"
+              LABEL="${INPUT_LABELS[$i]}"
+
+              REQUEST_BODY=$(jq -n --arg ref "$PR_BRANCH" --argjson inputs "$INPUTS" \
+                '{ref: $ref, inputs: $inputs}')
+
+              if RESPONSE=$(gh api "repos/${REPO}/actions/workflows/${WORKFLOW_ID}/dispatches" \
+                --method POST --input - <<< "$REQUEST_BODY" 2>&1); then
+                SUCCESS=true
+                echo "✅ Successfully dispatched workflow: ${WORKFLOW_ID} (${LABEL})"
+                echo "success=true" >> "$GITHUB_OUTPUT"
+                echo "workflow-id=${WORKFLOW_ID}" >> "$GITHUB_OUTPUT"
+                break 2
+              else
+                LAST_ERROR="$RESPONSE"
+
+                # 422 with unexpected inputs — try fewer inputs
+                if echo "$RESPONSE" | grep -q "Unexpected inputs"; then
+                  echo "ℹ️ ${WORKFLOW_ID} (${LABEL}): Unexpected inputs, retrying with fewer inputs"
+                  continue
+                fi
+
+                echo "❌ Failed to dispatch ${WORKFLOW_ID}: ${RESPONSE}"
+
+                # 404 means workflow not found — try next extension
+                if echo "$RESPONSE" | grep -q "Not Found"; then
+                  break
+                fi
+
+                # Any other error — stop entirely
+                break 2
+              fi
+            done
+          done
+
+          if [ "$SUCCESS" != "true" ]; then
+            echo "success=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Failed to dispatch workflow: ${LAST_ERROR}"
+            exit 1
+          fi
+
+      - name: React to success
+        if: steps.dispatch.outputs.success == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ needs.parse-command.outputs.comment-id }}
+        shell: bash
+        run: |
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content='+1' --silent
+
+      - name: React to failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMENT_ID: ${{ needs.parse-command.outputs.comment-id }}
+        shell: bash
+        run: |
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content='-1' --silent

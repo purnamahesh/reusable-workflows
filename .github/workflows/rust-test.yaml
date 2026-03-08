@@ -1,0 +1,9 @@
+name: Audit
+jobs:
+    runs-on: ubuntu-latest
+    steps:
+        - name: Build using cargo cheef
+          run: |
+            cargo chef prepare --receipe-path recipe.json
+            cargo chef cook --receipe-path recipe.json
+            cargo build --release

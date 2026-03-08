@@ -5,20 +5,21 @@ on:
     branches:
       - main
 jobs:
-    runs-on: ubuntu-latest
-    steps:
-        - name: checkout
-          uses: actions/checkout@v4
-        - name: install audit, deny, tarpaulin, chef
-          run: cargo install cargo-audit cargo-deny cargo-tarpaulin cargo-chef
-        - name: Security check
-          run: cargo audit
-        - name: Dependency policy check
-          run: cargo deny check
-        - name: Test coverage gate
-          run: cargo tarpaulin --fail-under 80
-        - name: Build using cargo cheef
-          run: |
-            cargo chef prepare --receipe-path recipe.json
-            cargo chef cook --receipe-path recipe.json
-            cargo build --release
+    audit:
+      runs-on: ubuntu-latest
+      steps:
+          - name: checkout
+            uses: actions/checkout@v4
+          - name: install audit, deny, tarpaulin, chef
+            run: cargo install cargo-audit cargo-deny cargo-tarpaulin cargo-chef
+          - name: Security check
+            run: cargo audit
+          - name: Dependency policy check
+            run: cargo deny check
+          - name: Test coverage gate
+            run: cargo tarpaulin --fail-under 80
+          - name: Build using cargo cheef
+            run: |
+              cargo chef prepare --receipe-path recipe.json
+              cargo chef cook --receipe-path recipe.json
+              cargo build --release

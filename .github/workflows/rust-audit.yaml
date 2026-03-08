@@ -1,5 +1,7 @@
 name: Audit
 on:
+  workflow_dispatch:
+  workflow_call:
   pull_request:
     types: [opened, reopened, synchronize]
     branches:

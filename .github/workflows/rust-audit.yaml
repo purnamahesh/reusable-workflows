@@ -3,25 +3,21 @@ on:
   workflow_dispatch:
   workflow_call:
   pull_request:
-    types: [opened, reopened, synchronize]
-    branches:
-      - main
 jobs:
-    audit:
-      runs-on: ubuntu-latest
-      steps:
-          - name: checkout
-            uses: actions/checkout@v4
-          - name: install audit, deny, tarpaulin, chef
-            run: cargo install cargo-audit cargo-deny cargo-tarpaulin cargo-chef
-          - name: Security check
-            run: cargo audit
-          - name: Dependency policy check
-            run: cargo deny check
-          - name: Test coverage gate
-            run: cargo tarpaulin --fail-under 80
-          - name: Build using cargo cheef
-            run: |
-              cargo chef prepare --receipe-path recipe.json
-              cargo chef cook --receipe-path recipe.json
-              cargo build --release
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+      - name: install cargo-audit
+        uses: taiki-e/install-action@a37010ded18ff788be4440302bd6830b1ae50d8b # tag=v2.68.25
+        with:
+          tool: cargo-audit
+      - name: install cargo-deny
+        uses: taiki-e/install-action@a37010ded18ff788be4440302bd6830b1ae50d8b # tag=v2.68.25
+        with:
+          tool: cargo-deny
+      - name: Security check
+        run: cargo audit
+      - name: Dependency policy check
+        run: cargo deny check

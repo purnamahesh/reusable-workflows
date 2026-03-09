@@ -1,15 +1,77 @@
-name: Audit
-
+name: test
 on:
-  workflow_dispatch:
   workflow_call:
-
+    inputs:
+      os:
+        description: 'JSON list of runner OS images (e.g. ["ubuntu-latest", "macos-latest"])'
+        type: string
+        default: '["ubuntu-latest"]'
+      toolchain:
+        description: 'JSON list of Rust toolchains (e.g. ["stable", "beta"])'
+        type: string
+        default: '["stable"]'
+      features:
+        description: 'JSON list of feature sets to test. Use "all" for --all-features, or specific feature names (e.g. ["all", "serde", "tokio"])'
+        type: string
+        default: '["all"]'
+      test-path:
+        description: 'Package or path to test (passed to -p flag). Empty string runs all.'
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} / ${{ matrix.toolchain }} / ${{ matrix.features }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJson(inputs.os) }}
+        toolchain: ${{ fromJson(inputs.toolchain) }}
+        features: ${{ fromJson(inputs.features) }}
     steps:
-      - name: Build using cargo cheef
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+        with:
+          submodules: true
+      - name: Install ${{ matrix.toolchain }}
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # branch=master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # tag=v2.8.2
+      - name: cargo generate-lockfile
+        if: hashFiles('Cargo.lock') == ''
+        run: cargo generate-lockfile
+      - name: cargo test
         run: |
-          cargo chef prepare --receipe-path recipe.json
-          cargo chef cook --receipe-path recipe.json
-          cargo build --release
+          FEATURES_FLAG=""
+          if [ "${{ matrix.features }}" = "all" ]; then
+            FEATURES_FLAG="--all-features"
+          else
+            FEATURES_FLAG="--features ${{ matrix.features }}"
+          fi
+
+          PATH_FLAG=""
+          if [ -n "${{ inputs.test-path }}" ]; then
+            PATH_FLAG="-p ${{ inputs.test-path }}"
+          fi
+
+          cargo test --locked $FEATURES_FLAG $PATH_FLAG --all-targets
+      - name: cargo test --doc
+        run: |
+          FEATURES_FLAG=""
+          if [ "${{ matrix.features }}" = "all" ]; then
+            FEATURES_FLAG="--all-features"
+          else
+            FEATURES_FLAG="--features ${{ matrix.features }}"
+          fi
+
+          PATH_FLAG=""
+          if [ -n "${{ inputs.test-path }}" ]; then
+            PATH_FLAG="-p ${{ inputs.test-path }}"
+          fi
+
+          cargo test --locked $FEATURES_FLAG $PATH_FLAG --doc

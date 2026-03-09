@@ -1,0 +1,59 @@
+name: check
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        description: 'Rust toolchain for checks (e.g. "stable", "nightly")'
+        type: string
+        default: stable
+      features:
+        description: 'JSON list of feature sets to check. Use "all" for --all-features, or specific feature names (e.g. ["serde", "tokio"])'
+        type: string
+        default: '["all"]'
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    name: fmt
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+        with:
+          submodules: true
+      - name: Install ${{ inputs.toolchain }}
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # branch=master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+  clippy:
+    runs-on: ubuntu-latest
+    name: clippy / ${{ matrix.features }}
+    strategy:
+      fail-fast: false
+      matrix:
+        features: ${{ fromJson(inputs.features) }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+        with:
+          submodules: true
+      - name: Install ${{ inputs.toolchain }}
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # branch=master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: clippy
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # tag=v2.8.2
+      - name: cargo clippy
+        run: |
+          FEATURES_FLAG=""
+          if [ "${{ matrix.features }}" = "all" ]; then
+            FEATURES_FLAG="--all-features"
+          else
+            FEATURES_FLAG="--features ${{ matrix.features }}"
+          fi
+
+          cargo clippy $FEATURES_FLAG --all-targets -- -D warnings

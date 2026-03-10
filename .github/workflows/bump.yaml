@@ -40,6 +40,8 @@ jobs:
         run: knope prepare-release --verbose
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
+      - name: Update lock file
+        run: cargo generate-lockfile
       - name: Commit and push
         run: |
           git add -A

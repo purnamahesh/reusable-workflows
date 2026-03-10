@@ -58,6 +58,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PAT }}
       - name: Revert knope.toml
         run: git checkout -- knope.toml
+      - name: Update lock file
+        run: cargo generate-lockfile
       - name: cargo publish
         run: cargo publish --locked --allow-dirty
         env:

@@ -1,15 +1,11 @@
-name: test
+name: check
 on:
   workflow_dispatch:
     inputs:
-      os:
-        description: 'JSON list of runner OS images'
-        type: string
-        default: '["ubuntu-latest"]'
       toolchain:
-        description: 'JSON list of Rust toolchains'
+        description: 'Rust toolchain for checks (e.g. "stable", "nightly")'
         type: string
-        default: '["stable"]'
+        default: stable
       features:
         description: 'JSON list of feature sets'
         type: string
@@ -18,70 +14,62 @@ on:
         description: 'Pass --no-default-features for specific features'
         type: boolean
         default: false
-      test-path:
-        description: 'Package passed to -p flag'
-        type: string
-        default: ''
   workflow_call:
     inputs:
-      os:
-        type: string
-        default: '["ubuntu-latest"]'
       toolchain:
         type: string
-        default: '["stable"]'
+        default: stable
       features:
         type: string
         default: '["default"]'
       no-default-features:
         type: boolean
         default: false
-      test-path:
-        type: string
-        default: ''
 permissions:
   contents: read
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 jobs:
-  test:
-    runs-on: ${{ matrix.os }}
-    name: ${{ matrix.os }} / ${{ matrix.toolchain }} / ${{ matrix.features }}
+  fmt:
+    runs-on: ubuntu-latest
+    name: fmt
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+        with:
+          submodules: true
+      - name: Install ${{ inputs.toolchain }}
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # branch=master
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+  clippy:
+    runs-on: ubuntu-latest
+    name: clippy / ${{ matrix.features }}
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJson(inputs.os) }}
-        toolchain: ${{ fromJson(inputs.toolchain) }}
         features: ${{ fromJson(inputs.features) }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
         with:
           submodules: true
-      - name: OS setup (Unix)
-        if: runner.os != 'Windows'
+      - name: OS setup
         run: |
-          SCRIPT=".github/scripts/setup-${{ matrix.os }}.sh"
+          SCRIPT=".github/scripts/setup-ubuntu-latest.sh"
           if [ -f "$SCRIPT" ]; then
             chmod +x "$SCRIPT"
             "$SCRIPT"
           fi
-      - name: OS setup (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $script = ".github/scripts/setup-${{ matrix.os }}.ps1"
-          if (Test-Path $script) {
-            & $script
-          }
-      - name: Install ${{ matrix.toolchain }}
+        shell: bash
+      - name: Install ${{ inputs.toolchain }}
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # branch=master
         with:
-          toolchain: ${{ matrix.toolchain }}
+          toolchain: ${{ inputs.toolchain }}
+          components: clippy
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # tag=v2.8.2
-      - name: cargo generate-lockfile
-        if: hashFiles('Cargo.lock') == ''
-        run: cargo generate-lockfile
       - name: Resolve cargo flags
         run: |
           FEATURES_FLAG=""
@@ -94,14 +82,6 @@ jobs:
             FEATURES_FLAG="$FEATURES_FLAG --features ${{ matrix.features }}"
           fi
 
-          PATH_FLAG=""
-          if [ -n "${{ inputs.test-path }}" ]; then
-            PATH_FLAG="-p ${{ inputs.test-path }}"
-          fi
-
           echo "FEATURES_FLAG=$FEATURES_FLAG" >> "$GITHUB_ENV"
-          echo "PATH_FLAG=$PATH_FLAG" >> "$GITHUB_ENV"
-      - name: cargo test
-        run: cargo test --locked $FEATURES_FLAG $PATH_FLAG --all-targets
-      - name: cargo test --doc
-        run: cargo test --locked $FEATURES_FLAG $PATH_FLAG --doc
+      - name: cargo clippy
+        run: cargo clippy $FEATURES_FLAG --all-targets -- -D warnings

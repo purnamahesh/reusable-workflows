@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      knope-version:
+        description: 'Knope version to install'
+        type: string
+        default: '0.22.3'
+      publish-crate:
+        description: 'Publish crate to crates.io'
+        type: boolean
+        default: false
+    secrets:
+      PAT:
+        description: 'Personal access token with contents:write'
+        required: true
+      CARGO_REGISTRY_TOKEN:
+        description: 'crates.io API token (required if publish-crate is true)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: startsWith(github.event.head_commit.message, 'feat') || startsWith(github.event.head_commit.message, 'fix')
+    runs-on: ubuntu-latest
+    name: Release
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Install stable
+        if: inputs.publish-crate
+        uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # branch=master
+        with:
+          toolchain: stable
+      - name: cargo publish
+        if: inputs.publish-crate
+        run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - uses: knope-dev/action@19617851f9f13ab2f27a05989c55efb18aca3675 # tag=v2.1.2
+        with:
+          version: ${{ inputs.knope-version }}
+      - name: Create GitHub Release
+        run: knope release --verbose
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}

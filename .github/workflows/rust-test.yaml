@@ -65,45 +65,26 @@ jobs:
       - name: cargo generate-lockfile
         if: hashFiles('Cargo.lock') == ''
         run: cargo generate-lockfile
+      - name: Resolve cargo flags
+        run: |
+          FEATURES_FLAG=""
+          if [ "${{ matrix.features }}" = "all" ]; then
+            FEATURES_FLAG="--all-features"
+          elif [ "${{ matrix.features }}" != "default" ]; then
+            if [ "${{ inputs.no-default-features }}" = "true" ]; then
+              FEATURES_FLAG="--no-default-features"
+            fi
+            FEATURES_FLAG="$FEATURES_FLAG --features ${{ matrix.features }}"
+          fi
+
+          PATH_FLAG=""
+          if [ -n "${{ inputs.test-path }}" ]; then
+            PATH_FLAG="-p ${{ inputs.test-path }}"
+          fi
+
+          echo "FEATURES_FLAG=$FEATURES_FLAG" >> "$GITHUB_ENV"
+          echo "PATH_FLAG=$PATH_FLAG" >> "$GITHUB_ENV"
       - name: cargo test
-        run: |
-          FEATURES_FLAG=""
-          if [ "${{ matrix.features }}" = "all" ]; then
-            FEATURES_FLAG="--all-features"
-          elif [ "${{ matrix.features }}" = "default" ]; then
-            FEATURES_FLAG=""
-          else
-            NO_DEFAULT=""
-            if [ "${{ inputs.no-default-features }}" = "true" ]; then
-              NO_DEFAULT="--no-default-features"
-            fi
-            FEATURES_FLAG="$NO_DEFAULT --features ${{ matrix.features }}"
-          fi
-
-          PATH_FLAG=""
-          if [ -n "${{ inputs.test-path }}" ]; then
-            PATH_FLAG="-p ${{ inputs.test-path }}"
-          fi
-
-          cargo test --locked $FEATURES_FLAG $PATH_FLAG --all-targets
+        run: cargo test --locked $FEATURES_FLAG $PATH_FLAG --all-targets
       - name: cargo test --doc
-        run: |
-          FEATURES_FLAG=""
-          if [ "${{ matrix.features }}" = "all" ]; then
-            FEATURES_FLAG="--all-features"
-          elif [ "${{ matrix.features }}" = "default" ]; then
-            FEATURES_FLAG=""
-          else
-            NO_DEFAULT=""
-            if [ "${{ inputs.no-default-features }}" = "true" ]; then
-              NO_DEFAULT="--no-default-features"
-            fi
-            FEATURES_FLAG="$NO_DEFAULT --features ${{ matrix.features }}"
-          fi
-
-          PATH_FLAG=""
-          if [ -n "${{ inputs.test-path }}" ]; then
-            PATH_FLAG="-p ${{ inputs.test-path }}"
-          fi
-
-          cargo test --locked $FEATURES_FLAG $PATH_FLAG --doc
+        run: cargo test --locked $FEATURES_FLAG $PATH_FLAG --doc

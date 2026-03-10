@@ -59,19 +59,18 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           components: clippy
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # tag=v2.8.2
-      - name: cargo clippy
+      - name: Resolve cargo flags
         run: |
           FEATURES_FLAG=""
           if [ "${{ matrix.features }}" = "all" ]; then
             FEATURES_FLAG="--all-features"
-          elif [ "${{ matrix.features }}" = "default" ]; then
-            FEATURES_FLAG=""
-          else
-            NO_DEFAULT=""
+          elif [ "${{ matrix.features }}" != "default" ]; then
             if [ "${{ inputs.no-default-features }}" = "true" ]; then
-              NO_DEFAULT="--no-default-features"
+              FEATURES_FLAG="--no-default-features"
             fi
-            FEATURES_FLAG="$NO_DEFAULT --features ${{ matrix.features }}"
+            FEATURES_FLAG="$FEATURES_FLAG --features ${{ matrix.features }}"
           fi
 
-          cargo clippy $FEATURES_FLAG --all-targets -- -D warnings
+          echo "FEATURES_FLAG=$FEATURES_FLAG" >> "$GITHUB_ENV"
+      - name: cargo clippy
+        run: cargo clippy $FEATURES_FLAG --all-targets -- -D warnings

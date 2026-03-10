@@ -7,9 +7,13 @@ on:
         type: string
         default: stable
       features:
-        description: 'JSON list of feature sets to check. Use "all" for --all-features, or specific feature names (e.g. ["serde", "tokio"])'
+        description: 'JSON list of feature sets to check. Use "default" for default features, "all" for --all-features, or specific feature names (e.g. ["default", "serde", "tokio"])'
         type: string
-        default: '["all"]'
+        default: '["default"]'
+      no-default-features:
+        description: 'Pass --no-default-features when checking specific features (not applied to "default" or "all")'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -41,6 +45,13 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
         with:
           submodules: true
+      - name: OS setup
+        run: |
+          SCRIPT=".github/scripts/setup-ubuntu-latest.sh"
+          if [ -f "$SCRIPT" ]; then
+            chmod +x "$SCRIPT"
+            "$SCRIPT"
+          fi
       - name: Install ${{ inputs.toolchain }}
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # branch=master
         with:
@@ -52,8 +63,14 @@ jobs:
           FEATURES_FLAG=""
           if [ "${{ matrix.features }}" = "all" ]; then
             FEATURES_FLAG="--all-features"
+          elif [ "${{ matrix.features }}" = "default" ]; then
+            FEATURES_FLAG=""
           else
-            FEATURES_FLAG="--features ${{ matrix.features }}"
+            NO_DEFAULT=""
+            if [ "${{ inputs.no-default-features }}" = "true" ]; then
+              NO_DEFAULT="--no-default-features"
+            fi
+            FEATURES_FLAG="$NO_DEFAULT --features ${{ matrix.features }}"
           fi
 
           cargo clippy $FEATURES_FLAG --all-targets -- -D warnings

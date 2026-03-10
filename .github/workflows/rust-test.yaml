@@ -41,13 +41,22 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
         with:
           submodules: true
-      - name: OS setup
+      - name: OS setup (Unix)
+        if: runner.os != 'Windows'
         run: |
           SCRIPT=".github/scripts/setup-${{ matrix.os }}.sh"
           if [ -f "$SCRIPT" ]; then
             chmod +x "$SCRIPT"
             "$SCRIPT"
           fi
+      - name: OS setup (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $script = ".github/scripts/setup-${{ matrix.os }}.ps1"
+          if (Test-Path $script) {
+            & $script
+          }
       - name: Install ${{ matrix.toolchain }}
         uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # branch=master
         with:

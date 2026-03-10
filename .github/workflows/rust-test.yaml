@@ -1,25 +1,42 @@
 name: test
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       os:
-        description: 'JSON list of runner OS images (e.g. ["ubuntu-latest", "macos-latest"])'
+        description: 'JSON list of runner OS images'
         type: string
         default: '["ubuntu-latest"]'
       toolchain:
-        description: 'JSON list of Rust toolchains (e.g. ["stable", "beta"])'
+        description: 'JSON list of Rust toolchains'
         type: string
         default: '["stable"]'
       features:
-        description: 'JSON list of feature sets to test. Use "default" for default features, "all" for --all-features, or specific feature names (e.g. ["default", "serde", "tokio"])'
+        description: 'JSON list of feature sets'
         type: string
         default: '["default"]'
       no-default-features:
-        description: 'Pass --no-default-features when testing specific features (not applied to "default" or "all")'
+        description: 'Pass --no-default-features for specific features'
         type: boolean
         default: false
       test-path:
-        description: 'Package or path to test (passed to -p flag). Empty string runs all.'
+        description: 'Package passed to -p flag'
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      os:
+        type: string
+        default: '["ubuntu-latest"]'
+      toolchain:
+        type: string
+        default: '["stable"]'
+      features:
+        type: string
+        default: '["default"]'
+      no-default-features:
+        type: boolean
+        default: false
+      test-path:
         type: string
         default: ''
 permissions:

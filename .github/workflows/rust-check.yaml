@@ -1,17 +1,28 @@
 name: check
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       toolchain:
         description: 'Rust toolchain for checks (e.g. "stable", "nightly")'
         type: string
         default: stable
       features:
-        description: 'JSON list of feature sets to check. Use "default" for default features, "all" for --all-features, or specific feature names (e.g. ["default", "serde", "tokio"])'
+        description: 'JSON list of feature sets'
         type: string
         default: '["default"]'
       no-default-features:
-        description: 'Pass --no-default-features when checking specific features (not applied to "default" or "all")'
+        description: 'Pass --no-default-features for specific features'
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      toolchain:
+        type: string
+        default: stable
+      features:
+        type: string
+        default: '["default"]'
+      no-default-features:
         type: boolean
         default: false
 permissions:

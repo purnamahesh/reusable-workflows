@@ -1,7 +1,7 @@
 name: Rust Pre-Release
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       pre-release-label:
         description: 'Pre-release label (e.g. alpha, beta, rc)'
@@ -9,6 +9,14 @@ on:
         default: 'alpha'
       knope-version:
         description: 'Knope version to install'
+        type: string
+        default: '0.22.3'
+  workflow_call:
+    inputs:
+      pre-release-label:
+        type: string
+        default: 'alpha'
+      knope-version:
         type: string
         default: '0.22.3'
     secrets:

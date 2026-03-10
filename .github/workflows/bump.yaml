@@ -1,0 +1,46 @@
+name: Bump
+
+on:
+  workflow_call:
+    inputs:
+      knope-version:
+        description: 'Knope version to install'
+        type: string
+        default: '0.22.3'
+    secrets:
+      PAT:
+        description: 'Personal access token with contents:write'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    name: Bump version
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT }}
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - uses: knope-dev/action@19617851f9f13ab2f27a05989c55efb18aca3675 # tag=v2.1.2
+        with:
+          version: ${{ inputs.knope-version }}
+      - name: Prepare release
+        run: knope prepare-release --verbose
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+      - name: Commit and push
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: bump version"
+            git push
+          fi

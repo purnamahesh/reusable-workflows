@@ -1,0 +1,42 @@
+---
+name: Release - GitHub
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'The version for this release (without "v" prefix, e.g. "1.0.0")'
+        required: true
+        type: string
+      artifact:
+        description: The name of the uploaded artifact (leave empty to create a release without files)
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  github:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+
+      - name: Download artifacts
+        if: inputs.artifact != ''
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # tag=v5.0.0
+        with:
+          name: ${{ inputs.artifact }}
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # tag=v2.5.0
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/*
